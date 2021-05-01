@@ -1,0 +1,128 @@
+move_base_msgs, actionlib, and roscpp packages as shown below:
+
+
+
+
+$ catkin_create_pkg simple_navigation_goals move_base_msgs actionlib roscpp
+After this is done we'll need to roscd to the package we created, since we'll be using it as our workspace
+
+
+roscd simple_navigation_goals
+Creating the Node
+Now that we have our package, we need to write the code that will send goals to the base. Fire up a text editor and paste the following into a file called src/simple_navigation_goals.cpp. Don't worry if there are things you don't understand, we'll walk through the details of this file line-by-line shortly.
+
+
+Toggle line numbers
+   1 #include <ros/ros.h>
+   2 #include <move_base_msgs/MoveBaseAction.h>
+   3 #include <actionlib/client/simple_action_client.h>
+   4 
+   5 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
+   6 
+   7 int main(int argc, char** argv){
+   8   ros::init(argc, argv, "simple_navigation_goals");
+   9 
+  10   //tell the action client that we want to spin a thread by default
+  11   MoveBaseClient ac("move_base", true);
+  12 
+  13   //wait for the action server to come up
+  14   while(!ac.waitForServer(ros::Duration(5.0))){
+  15     ROS_INFO("Waiting for the move_base action server to come up");
+  16   }
+  17 
+  18   move_base_msgs::MoveBaseGoal goal;
+  19 
+  20   //we'll send a goal to the robot to move 1 meter forward
+  21   goal.target_pose.header.frame_id = "base_link";
+  22   goal.target_pose.header.stamp = ros::Time::now();
+  23 
+  24   goal.target_pose.pose.position.x = 1.0;
+  25   goal.target_pose.pose.orientation.w = 1.0;
+  26 
+  27   ROS_INFO("Sending goal");
+  28   ac.sendGoal(goal);
+  29 
+  30   ac.waitForResult();
+  31 
+  32   if(ac.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+  33     ROS_INFO("Hooray, the base moved 1 meter forward");
+  34   else
+  35     ROS_INFO("The base failed to move forward 1 meter for some reason");
+  36 
+  37   return 0;
+  38 }
+Now, we'll break the code down line by line:
+
+
+Toggle line numbers
+   2 #include <move_base_msgs/MoveBaseAction.h>
+   3 
+
+This line includes the action specification for move_base which is a ROS action that exposes a high level interface to the navigation stack. Essentially, the move_base action accepts goals from clients and attempts to move the robot to the specified position/orientation in the world. For a detailed discussion of ROS actions see the actionlib documentation.
+
+
+Toggle line numbers
+   5 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
+This line creates a convenience typedef for a SimpleActionClient that will allow us to communicate with actions that adhere to the MoveBaseAction action interface.
+
+
+Toggle line numbers
+  10   //tell the action client that we want to spin a thread by default
+  11   MoveBaseClient ac("move_base", true);
+This line constructs an action client that we'll use to communicate with the action named "move_base" that adheres to the MoveBaseAction interface. It also tells the action client to start a thread to call ros::spin() so that ROS callbacks will be processed by passing "true" as the second argument of the MoveBaseClient constructor.
+
+
+Toggle line numbers
+  13   //wait for the action server to come up
+  14   while(!ac.waitForServer(ros::Duration(5.0))){
+  15     ROS_INFO("Waiting for the move_base action server to come up");
+  16   }
+These lines wait for the action server to report that it has come up and is ready to begin processing goals.
+
+
+Toggle line numbers
+  18   move_base_msgs::MoveBaseGoal goal;
+  19 
+  20   //we'll send a goal to the robot to move 1 meter forward
+  21   goal.target_pose.header.frame_id = "base_link";
+  22   goal.target_pose.header.stamp = ros::Time::now();
+  23 
+  24   goal.target_pose.pose.position.x = 1.0;
+  25   goal.target_pose.pose.orientation.w = 1.0;
+  26 
+  27   ROS_INFO("Sending goal");
+  28   ac.sendGoal(goal);
+Here we create a goal to send to move_base using the move_base_msgs::MoveBaseGoal message type which is included automatically with the MoveBaseAction.h header. We'll just tell the base to move 1 meter forward in the "base_link" coordinate frame. The call to ac.sendGoal will actually push the goal out over the wire to the move_base node for processing.
+
+
+Toggle line numbers
+  30   ac.waitForResult();
+  31 
+  32   if(ac.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+  33     ROS_INFO("Hooray, the base moved 1 meter forward");
+  34   else
+  35     ROS_INFO("The base failed to move forward 1 meter for some reason");
+The only thing left to do now is to wait for the goal to finish using the ac.waitForGoalToFinish call which will block until the move_base action is done processing the goal we sent it. After it finishes, we can check if the goal succeded or failed and output a message to the user accordingly.
+
+Building and Running
+Now that we have a package and a source file, we'll want to build and then try things out. The first step will be to add our src/simple_navigation_goals.cpp file to our CMakeLists.txt file to get it to build. Open up CMakeLists.txt in your editor of choice and add the following line to the bottom of the file.
+
+
+
+add_executable(simple_navigation_goals src/simple_navigation_goals.cpp)
+target_link_libraries(simple_navigation_goals ${catkin_LIBRARIES})
+Once this is done, we can build our executable by typing make.
+
+$ catkin_make
+
+Now we're ready to run. At this point, we'll assume that the navigation stack has been brought up according to one of the tutorials listed above. One important thing to check is that the name of the action, we've assumed "move_base" in this tutorial, matches the name used in your code. To check this, we'll execute the following rostopic command:
+
+
+rostopic list | grep move_base/goal
+If something shows up, then you're good to go. Otherwise, you need to find the name of the action that the navigation stack is using, a common alternative on the PR2 platform is "move_base_local," and update all references in the src/simple_navigation_goals.cpp file accordingly.
+
+After this, its as simple as running the executable we created.
+
+
+./bin/simple_navigation_goals
+And, if all goes well, the robot should begin to move a meter forward.
